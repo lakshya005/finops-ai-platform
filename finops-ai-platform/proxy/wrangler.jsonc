@@ -12,7 +12,29 @@
 	},
 	"compatibility_flags": [
 		"nodejs_compat"
-	]
+	],
+	"kv_namespaces": [
+		{
+			"binding": "API_KEYS",
+			"id": "7eaa2db83d944c0aaeea6718caa95c63",
+			"preview_id": "7eaa2db83d944c0aaeea6718caa95c63"
+		}
+	],
+	"vars": {
+		// Enable mock mode for local dev so no real upstream key is needed.
+		// Overridden to "false" in the production environment below.
+		"MOCK_UPSTREAM": "true"
+	},
+	"env": {
+		"production": {
+			"vars": {
+				"MOCK_UPSTREAM": "false"
+			}
+		}
+	},
+	"dev": {
+		"local_protocol": "http"
+	}
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
