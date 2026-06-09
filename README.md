@@ -285,3 +285,4 @@ AWS Certified Solutions Architect | Cloud Practitioner | AI Practitioner
 This project demonstrates end-to-end ownership of a production-grade platform: edge computing, async event pipelines, columnar analytics, and modern full-stack development.
 
 [GitHub](https://github.com/lakshya005/finops-ai-platform)# trigger deploy
+# trigger deploy
