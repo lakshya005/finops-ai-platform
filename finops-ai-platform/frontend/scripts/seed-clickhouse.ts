@@ -81,10 +81,10 @@ function buildRows(): CostEvent[] {
 // ---------------------------------------------------------------------------
 async function main() {
   const client = createClient({
-    host:     'http://localhost:8123',
-    username: 'default',
-    password: process.env.CLICKHOUSE_PASSWORD ?? 'finops123',
-    database: 'default',
+    host:     process.env.CLICKHOUSE_HOST ?? 'http://localhost:8123',
+    username: process.env.CLICKHOUSE_USER ?? 'default',
+    password: process.env.CLICKHOUSE_PASSWORD ?? '',
+    database: process.env.CLICKHOUSE_DB ?? 'default',
   })
 
   const rows = buildRows()

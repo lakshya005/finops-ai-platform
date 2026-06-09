@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import SpendChart from './SpendChart'
 
 const ORG_ID = 'org_test_01'
-const BASE_URL = 'http://localhost:3000'
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || ''
 
 interface CostRow {
   model: string
