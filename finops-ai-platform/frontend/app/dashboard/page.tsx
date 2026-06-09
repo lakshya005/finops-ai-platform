@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import clickhouse from '@/lib/clickhouse'
 import SpendChart from './SpendChart'
 
 const ORG_ID = 'org_test_01'
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || ''
+const DAYS = 7
 
 interface CostRow {
   model: string
@@ -23,6 +24,74 @@ function fmt(cost: number) {
   return `$${cost.toFixed(6)}`
 }
 
+async function getCosts(): Promise<CostRow[]> {
+  const since = Date.now() - DAYS * 24 * 60 * 60 * 1000
+  try {
+    const result = await clickhouse.query({
+      query: `
+        SELECT
+          model,
+          provider,
+          toDate(toDateTime(timestamp_ms / 1000)) as date,
+          round(sum(cost_usd), 6) as total_cost,
+          count() as requests
+        FROM cost_events
+        WHERE org_id = {orgId: String}
+          AND timestamp_ms >= {since: Int64}
+        GROUP BY model, provider, date
+        ORDER BY date DESC, total_cost DESC
+      `,
+      query_params: { orgId: ORG_ID, since },
+      format: 'JSONEachRow',
+    })
+    return result.json()
+  } catch {
+    return []
+  }
+}
+
+async function getSummary(): Promise<Summary> {
+  try {
+    const [totalsResult, byProviderResult] = await Promise.all([
+      clickhouse.query({
+        query: `
+          SELECT
+            round(sum(cost_usd), 6) as total_cost_usd,
+            count() as total_requests
+          FROM cost_events
+          WHERE org_id = {orgId: String}
+        `,
+        query_params: { orgId: ORG_ID },
+        format: 'JSONEachRow',
+      }),
+      clickhouse.query({
+        query: `
+          SELECT
+            provider,
+            round(sum(cost_usd), 6) as cost
+          FROM cost_events
+          WHERE org_id = {orgId: String}
+          GROUP BY provider
+          ORDER BY cost DESC
+        `,
+        query_params: { orgId: ORG_ID },
+        format: 'JSONEachRow',
+      }),
+    ])
+
+    const [totals] = await totalsResult.json<{ total_cost_usd: number; total_requests: number }>()
+    const byProvider = await byProviderResult.json<{ provider: string; cost: number }>()
+
+    return {
+      total_cost_usd: totals.total_cost_usd,
+      total_requests: totals.total_requests,
+      by_provider: byProvider,
+    }
+  } catch {
+    return { total_cost_usd: 0, total_requests: 0, by_provider: [] }
+  }
+}
+
 export default async function DashboardPage() {
   const supabase = createClient()
   const {
@@ -31,17 +100,8 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  const [costsRes, summaryRes] = await Promise.all([
-    fetch(`${BASE_URL}/api/costs?orgId=${ORG_ID}&days=7`, { cache: 'no-store' }),
-    fetch(`${BASE_URL}/api/costs/summary?orgId=${ORG_ID}`, { cache: 'no-store' }),
-  ])
+  const [costs, summary] = await Promise.all([getCosts(), getSummary()])
 
-  const costs: CostRow[] = costsRes.ok ? await costsRes.json() : []
-  const summary: Summary = summaryRes.ok
-    ? await summaryRes.json()
-    : { total_cost_usd: 0, total_requests: 0, by_provider: [] }
-
-  // Aggregate cost by date for the chart
   const chartData = Object.entries(
     costs.reduce<Record<string, number>>((acc, row) => {
       acc[row.date] = (acc[row.date] ?? 0) + row.total_cost
@@ -52,7 +112,6 @@ export default async function DashboardPage() {
     .sort((a, b) => a.date.localeCompare(b.date))
 
   const topProvider = summary.by_provider[0]?.provider ?? '—'
-
   const sortedCosts = [...costs].sort((a, b) => b.total_cost - a.total_cost)
 
   return (
