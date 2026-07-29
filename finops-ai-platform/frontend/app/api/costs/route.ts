@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import clickhouse from '@/lib/clickhouse'
+import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
@@ -13,28 +13,20 @@ export async function GET(request: NextRequest) {
   const since = Date.now() - days * 24 * 60 * 60 * 1000
 
   try {
-    const result = await clickhouse.query({
-      query: `
-        SELECT
-          model,
-          provider,
-          toDate(toDateTime(timestamp_ms / 1000)) as date,
-          round(sum(cost_usd), 6) as total_cost,
-          count() as requests
-        FROM cost_events
-        WHERE org_id = {orgId: String}
-          AND timestamp_ms >= {since: Int64}
-        GROUP BY model, provider, date
-        ORDER BY date DESC, total_cost DESC
-      `,
-      query_params: { orgId, since },
-      format: 'JSONEachRow',
+    const supabase = createClient()
+    const { data: rows, error } = await supabase.rpc('get_costs_by_date', {
+      p_org_id: orgId,
+      p_since_ms: since
     })
 
-    const rows = await result.json()
+    if (error) {
+      throw error
+    }
+
+    // Ensure numeric types match expected API response (if needed)
     return NextResponse.json(rows)
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'ClickHouse unreachable'
+    const message = err instanceof Error ? err.message : 'Supabase unreachable'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

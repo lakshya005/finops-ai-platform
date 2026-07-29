@@ -7,10 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed": "npx ts-node --project tsconfig.scripts.json scripts/seed-clickhouse.ts"
+    "seed": "npx ts-node --project tsconfig.scripts.json scripts/seed-supabase.ts"
   },
   "dependencies": {
-    "@clickhouse/client": "^1.18.2",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.100.1",
     "next": "14.2.35",
@@ -22,6 +21,7 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "dotenv": "^17.4.2",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "postcss": "^8",

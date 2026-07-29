@@ -1,5 +1,10 @@
-import { createClient } from '@clickhouse/client'
+import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
+import dotenv from 'dotenv'
+import path from 'path'
+
+// Load environment variables from .env.local
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
 // ---------------------------------------------------------------------------
 // Pricing: [inputPricePer1M, outputPricePer1M]
@@ -16,9 +21,9 @@ const MODELS: Array<{
   { provider: 'anthropic', model: 'claude-3-5-haiku',    inputPrice: 1.00,  outputPrice: 5.00  },
 ]
 
-const ORG_ID    = 'org_test_01'
-const DAYS      = 30
-const BATCH_SIZE = 100
+const ORG_ID     = 'org_test_01'
+const DAYS       = 30
+const BATCH_SIZE = 1000
 
 function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min
@@ -80,12 +85,14 @@ function buildRows(): CostEvent[] {
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
-  const client = createClient({
-    url:      process.env.CLICKHOUSE_HOST ?? 'http://localhost:8123',
-    username: process.env.CLICKHOUSE_USER ?? 'default',
-    password: process.env.CLICKHOUSE_PASSWORD ?? '',
-    database: process.env.CLICKHOUSE_DB ?? 'default',
-  })
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey)
 
   const rows = buildRows()
   const totalBatches = Math.ceil(rows.length / BATCH_SIZE)
@@ -96,14 +103,16 @@ async function main() {
     const batch = rows.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE)
     console.log(`Inserting batch ${b + 1}/${totalBatches}...`)
 
-    await client.insert({
-      table:  'cost_events',
-      values: batch,
-      format: 'JSONEachRow',
-    })
+    const { error } = await supabase
+      .from('cost_events')
+      .insert(batch)
+
+    if (error) {
+      console.error(`Error inserting batch ${b + 1}:`, error.message)
+      throw error
+    }
   }
 
-  await client.close()
   console.log(`Done. Inserted ${rows.length} rows.`)
 }
 

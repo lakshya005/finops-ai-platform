@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import clickhouse from '@/lib/clickhouse'
+import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
@@ -10,42 +10,19 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const supabase = createClient()
     const [totalsResult, byProviderResult] = await Promise.all([
-      clickhouse.query({
-        query: `
-          SELECT
-            round(sum(cost_usd), 6) as total_cost_usd,
-            count() as total_requests
-          FROM cost_events
-          WHERE org_id = {orgId: String}
-        `,
-        query_params: { orgId },
-        format: 'JSONEachRow',
-      }),
-      clickhouse.query({
-        query: `
-          SELECT
-            provider,
-            round(sum(cost_usd), 6) as cost
-          FROM cost_events
-          WHERE org_id = {orgId: String}
-          GROUP BY provider
-          ORDER BY cost DESC
-        `,
-        query_params: { orgId },
-        format: 'JSONEachRow',
-      }),
+      supabase.rpc('get_costs_totals', { p_org_id: orgId }),
+      supabase.rpc('get_costs_by_provider', { p_org_id: orgId })
     ])
 
-    const [totals] = await totalsResult.json<{
-      total_cost_usd: number
-      total_requests: number
-    }>()
+    if (totalsResult.error) throw totalsResult.error
+    if (byProviderResult.error) throw byProviderResult.error
 
-    const byProvider = await byProviderResult.json<{
-      provider: string
-      cost: number
-    }>()
+    // In Postgres, totals return as a single-row array or object depending on the RPC return type
+    // If we return TABLE, it's an array. Let's assume it returns an array with one object.
+    const totals = (totalsResult.data as any[])[0] || { total_cost_usd: 0, total_requests: 0 }
+    const byProvider = byProviderResult.data || []
 
     return NextResponse.json({
       total_cost_usd: totals.total_cost_usd,
@@ -53,7 +30,7 @@ export async function GET(request: NextRequest) {
       by_provider: byProvider,
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'ClickHouse unreachable'
+    const message = err instanceof Error ? err.message : 'Supabase unreachable'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
