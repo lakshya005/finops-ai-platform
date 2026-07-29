@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import clickhouse from '@/lib/clickhouse'
 import SpendChart from './SpendChart'
 import type { ReactNode } from 'react'
 
@@ -28,24 +27,15 @@ function fmt(cost: number) {
 async function getCosts(): Promise<CostRow[]> {
   const since = Date.now() - DAYS * 24 * 60 * 60 * 1000
   try {
-    const result = await clickhouse.query({
-      query: `
-        SELECT
-          model,
-          provider,
-          toDate(toDateTime(timestamp_ms / 1000)) as date,
-          round(sum(cost_usd), 6) as total_cost,
-          count() as requests
-        FROM cost_events
-        WHERE org_id = {orgId: String}
-          AND timestamp_ms >= {since: Int64}
-        GROUP BY model, provider, date
-        ORDER BY date DESC, total_cost DESC
-      `,
-      query_params: { orgId: ORG_ID, since },
-      format: 'JSONEachRow',
+    const supabase = createClient()
+    const { data: rows, error } = await supabase.rpc('get_costs_by_date', {
+      p_org_id: ORG_ID,
+      p_since_ms: since,
     })
-    return result.json()
+
+    if (error) throw error
+
+    return rows || []
   } catch {
     return []
   }
@@ -53,35 +43,17 @@ async function getCosts(): Promise<CostRow[]> {
 
 async function getSummary(): Promise<Summary> {
   try {
+    const supabase = createClient()
     const [totalsResult, byProviderResult] = await Promise.all([
-      clickhouse.query({
-        query: `
-          SELECT
-            round(sum(cost_usd), 6) as total_cost_usd,
-            count() as total_requests
-          FROM cost_events
-          WHERE org_id = {orgId: String}
-        `,
-        query_params: { orgId: ORG_ID },
-        format: 'JSONEachRow',
-      }),
-      clickhouse.query({
-        query: `
-          SELECT
-            provider,
-            round(sum(cost_usd), 6) as cost
-          FROM cost_events
-          WHERE org_id = {orgId: String}
-          GROUP BY provider
-          ORDER BY cost DESC
-        `,
-        query_params: { orgId: ORG_ID },
-        format: 'JSONEachRow',
-      }),
+      supabase.rpc('get_costs_totals', { p_org_id: ORG_ID }),
+      supabase.rpc('get_costs_by_provider', { p_org_id: ORG_ID })
     ])
 
-    const [totals] = await totalsResult.json<{ total_cost_usd: number; total_requests: number }>()
-    const byProvider = await byProviderResult.json<{ provider: string; cost: number }>()
+    if (totalsResult.error) throw totalsResult.error
+    if (byProviderResult.error) throw byProviderResult.error
+
+    const totals = (totalsResult.data as any[])[0] || { total_cost_usd: 0, total_requests: 0 }
+    const byProvider = byProviderResult.data || []
 
     return {
       total_cost_usd: totals.total_cost_usd,
