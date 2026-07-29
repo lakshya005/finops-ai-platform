@@ -52,7 +52,7 @@ async function getSummary(): Promise<Summary> {
     if (totalsResult.error) throw totalsResult.error
     if (byProviderResult.error) throw byProviderResult.error
 
-    const totals = (totalsResult.data as any[])[0] || { total_cost_usd: 0, total_requests: 0 }
+    const totals = (totalsResult.data as Array<{ total_cost_usd: number; total_requests: number }>)?.[0] || { total_cost_usd: 0, total_requests: 0 }
     const byProvider = byProviderResult.data || []
 
     return {

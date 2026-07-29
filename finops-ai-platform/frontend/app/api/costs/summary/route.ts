@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     // In Postgres, totals return as a single-row array or object depending on the RPC return type
     // If we return TABLE, it's an array. Let's assume it returns an array with one object.
-    const totals = (totalsResult.data as any[])[0] || { total_cost_usd: 0, total_requests: 0 }
+    const totals = (totalsResult.data as Array<{ total_cost_usd: number; total_requests: number }>)?.[0] || { total_cost_usd: 0, total_requests: 0 }
     const byProvider = byProviderResult.data || []
 
     return NextResponse.json({
